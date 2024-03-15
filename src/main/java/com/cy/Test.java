@@ -24,6 +24,8 @@ public class Test {
         // 3. 测试 Aware 回调是否成功
         // userService1.printBeanName();
         // 4. 测试 Bean 的初始化接口是否成功
+        // 5. 测试后置处理器是否成功
+        userService1.printBeanName();
     }
 
 }
