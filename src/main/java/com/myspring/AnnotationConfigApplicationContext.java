@@ -43,7 +43,7 @@ public class AnnotationConfigApplicationContext {
             String beanName = entry.getKey();
             BeanDefinition beanDefinition = entry.getValue();
             if ("singleton".equals(beanDefinition.getScope())) {
-                Object bean = createBean(beanDefinition);
+                Object bean = createBean(beanName, beanDefinition);
                 singletonObjects.put(beanName, bean);
             }
         }
@@ -66,7 +66,7 @@ public class AnnotationConfigApplicationContext {
             } else {
                 // 不在单例池中存在，意味着是原型模式，需要创建对象
                 BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
-                Object bean = createBean(beanDefinition);
+                Object bean = createBean(beanName, beanDefinition);
                 return bean;
             }
         } else {
@@ -144,10 +144,11 @@ public class AnnotationConfigApplicationContext {
     /**
      * 根据 Bean 的定义创建 Bean 对象
      *
+     * @param beanName Bean 的名称
      * @param beanDefinition Bean 的定义
      * @return Bean 对象
      */
-    private Object createBean(BeanDefinition beanDefinition) {
+    private Object createBean(String beanName, BeanDefinition beanDefinition) {
         // 获取要创建的 Bean 对象的 Class 对象
         Class clazz = beanDefinition.getClazz();
         try {
@@ -170,6 +171,11 @@ public class AnnotationConfigApplicationContext {
                     // 将 fieldBean 注入 bean 的属性值
                     declaredField.set(bean, fieldBean);
                 }
+            }
+            // 判断当前 Bean 是否实现了 BeanNameAware 接口
+            if (bean instanceof BeanNameAware) {
+                // 如果实现了 BeanNameAware 接口，就可以直接强转，然后调用 setBeanName() 方法
+                ((BeanNameAware) bean).setName(beanName);
             }
             return bean;
         } catch (InstantiationException e) {
