@@ -4,6 +4,8 @@ import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -28,6 +30,11 @@ public class AnnotationConfigApplicationContext {
      * BeanDefinition 对象存储空间
      */
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
+
+    /**
+     * 用于存储 BeanPostProcessor 实现类
+     */
+    private List<BeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
     /**
      * 初始化 IoC 容器
@@ -109,6 +116,8 @@ public class AnnotationConfigApplicationContext {
                             Class<?> clazz = classLoader.loadClass(className);
                             // 通过每个类的 Class 对象判断该类是否添加了 @Component 注解
                             if (clazz.isAnnotationPresent(Component.class)) {
+                                // 把实现了 BeanPostProcessor 接口的类实例添加到 list 中
+                                addToBeanPostProcessorList(clazz);
                                 // 获取类的 @Component 注解
                                 Component componentAnnotation = clazz.getDeclaredAnnotation(Component.class);
                                 // 获取注解的参数
@@ -134,10 +143,28 @@ public class AnnotationConfigApplicationContext {
                             }
                         } catch (ClassNotFoundException e) {
                             e.printStackTrace();
+                        } catch (InvocationTargetException e) {
+                            e.printStackTrace();
+                        } catch (InstantiationException e) {
+                            e.printStackTrace();
+                        } catch (IllegalAccessException e) {
+                            e.printStackTrace();
+                        } catch (NoSuchMethodException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
             }
+        }
+    }
+
+    private void addToBeanPostProcessorList(Class<?> clazz) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
+        // 判断这个类是否实现了 BeanPostProcessor 接口
+        if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
+            // 如果实现了 BeanPostProcessor 接口，就直接实例化
+            BeanPostProcessor instance = (BeanPostProcessor) clazz.getDeclaredConstructor().newInstance();
+            // 把实例存入池子中
+            beanPostProcessorList.add(instance);
         }
     }
 
@@ -177,9 +204,17 @@ public class AnnotationConfigApplicationContext {
                 // 如果实现了 BeanNameAware 接口，就可以直接强转，然后调用 setBeanName() 方法
                 ((BeanNameAware) bean).setName(beanName);
             }
+            // 调用 beanPostProcessorList 中所有实现类的 postProcessBeforeInitialization() 方法
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                bean = beanPostProcessor.postProcessBeforeInitialization(bean, beanName);
+            }
             // 判断当前 Bean 是否实现了 InitializeBean 接口
             if (bean instanceof InitializeBean) {
                 ((InitializeBean) bean).afterPropertiesSet();
+            }
+            // 调用 beanPostProcessorList 中所有实现类的 postProcessAfterInitialization() 方法
+            for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+                bean = beanPostProcessor.postProcessAfterInitialization(bean, beanName);
             }
             return bean;
         } catch (InstantiationException e) {
@@ -189,6 +224,8 @@ public class AnnotationConfigApplicationContext {
         } catch (InvocationTargetException e) {
             e.printStackTrace();
         } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
