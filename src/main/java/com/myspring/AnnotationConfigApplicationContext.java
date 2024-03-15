@@ -177,6 +177,10 @@ public class AnnotationConfigApplicationContext {
                 // 如果实现了 BeanNameAware 接口，就可以直接强转，然后调用 setBeanName() 方法
                 ((BeanNameAware) bean).setName(beanName);
             }
+            // 判断当前 Bean 是否实现了 InitializeBean 接口
+            if (bean instanceof InitializeBean) {
+                ((InitializeBean) bean).afterPropertiesSet();
+            }
             return bean;
         } catch (InstantiationException e) {
             e.printStackTrace();
