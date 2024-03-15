@@ -1,9 +1,6 @@
 package com.cy.service;
 
-import com.myspring.Autowired;
-import com.myspring.BeanNameAware;
-import com.myspring.Component;
-import com.myspring.Scope;
+import com.myspring.*;
 
 /**
  * @author codeep
@@ -12,7 +9,7 @@ import com.myspring.Scope;
  */
 @Component("userService")
 @Scope("singleton")
-public class UserServiceImpl implements UserService, BeanNameAware {
+public class UserServiceImpl implements UserService, BeanNameAware, InitializeBean {
 
     @Autowired
     private OrderService orderService;
@@ -39,5 +36,8 @@ public class UserServiceImpl implements UserService, BeanNameAware {
         System.out.println(beanName);
     }
 
-
+    @Override
+    public void afterPropertiesSet() {
+        System.out.println(beanName + "被初始化了！");
+    }
 }

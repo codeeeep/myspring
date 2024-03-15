@@ -22,8 +22,8 @@ public class Test {
         // 2. 测试依赖注入是否成功
         // userService1.methodWithOrders();
         // 3. 测试 Aware 回调是否成功
-        userService1.printBeanName();
-
+        // userService1.printBeanName();
+        // 4. 测试 Bean 的初始化接口是否成功
     }
 
 }
