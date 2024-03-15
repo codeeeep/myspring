@@ -13,10 +13,11 @@ public class Test {
     public static void main(String[] args) {
         AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
         UserService userService1 = (UserService) applicationContext.getBean("userService");
-        UserService userService2 = (UserService) applicationContext.getBean("userService");
-        UserService userService3 = (UserService) applicationContext.getBean("userService");
-        System.out.println(userService1 == userService2 && userService2 == userService3);
+        // UserService userService2 = (UserService) applicationContext.getBean("userService");
+        // UserService userService3 = (UserService) applicationContext.getBean("userService");
+        // System.out.println(userService1 == userService2 && userService2 == userService3);
         userService1.queryAllUsers();
+        userService1.methodWithOrders();
 
     }
 

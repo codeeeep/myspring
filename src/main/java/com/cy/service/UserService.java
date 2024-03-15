@@ -12,4 +12,9 @@ public interface UserService {
      */
     void queryAllUsers();
 
+    /**
+     * 打印 orderService
+     */
+    void methodWithOrders();
+
 }
