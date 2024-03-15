@@ -13,11 +13,16 @@ public class Test {
     public static void main(String[] args) {
         AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
         UserService userService1 = (UserService) applicationContext.getBean("userService");
+        // 1.1 测试单例和多例
         // UserService userService2 = (UserService) applicationContext.getBean("userService");
         // UserService userService3 = (UserService) applicationContext.getBean("userService");
         // System.out.println(userService1 == userService2 && userService2 == userService3);
-        userService1.queryAllUsers();
-        userService1.methodWithOrders();
+        // 1.2 测试启动时扫描是否成功
+        // userService1.queryAllUsers();
+        // 2. 测试依赖注入是否成功
+        // userService1.methodWithOrders();
+        // 3. 测试 Aware 回调是否成功
+        userService1.printBeanName();
 
     }
 

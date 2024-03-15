@@ -13,8 +13,13 @@ public interface UserService {
     void queryAllUsers();
 
     /**
-     * 打印 orderService
+     * 打印注入的 orderService
      */
     void methodWithOrders();
+
+    /**
+     * 打印 Aware 回调获取的 beanName
+     */
+    void printBeanName();
 
 }
