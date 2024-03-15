@@ -7,6 +7,6 @@ package com.myspring;
  */
 public interface InitializeBean {
 
-    void afterPropertiesSet();
+    void afterPropertiesSet() throws Exception;
 
 }
