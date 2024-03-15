@@ -1,6 +1,7 @@
 package com.myspring;
 
 import java.io.File;
+import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.Map;
@@ -28,6 +29,11 @@ public class AnnotationConfigApplicationContext {
      */
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
 
+    /**
+     * 初始化 IoC 容器
+     *
+     * @param configClass 配置类
+     */
     public AnnotationConfigApplicationContext(Class configClass) {
         // 接收传入的配置类
         this.configClass = configClass;
@@ -43,6 +49,12 @@ public class AnnotationConfigApplicationContext {
         }
     }
 
+    /**
+     * 获取 Bean 对象
+     *
+     * @param beanName Bean 对象的名称
+     * @return Bean 对象
+     */
     public Object getBean(String beanName) {
         // 判断传入的参数是否在 beanDefinitionMap 中定义过
         if (beanDefinitionMap.containsKey(beanName)) {
@@ -51,21 +63,23 @@ public class AnnotationConfigApplicationContext {
                 // 在单例池中存在，意味着是单例模式，直接取出即可
                 Object bean = singletonObjects.get(beanName);
                 return bean;
-            }
-            else {
+            } else {
                 // 不在单例池中存在，意味着是原型模式，需要创建对象
                 BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
                 Object bean = createBean(beanDefinition);
                 return bean;
             }
-        }
-        else {
+        } else {
             // 不存在意味着没有定义，则抛出异常（推荐自定义异常，这里用空指针代替）
             throw new NullPointerException("池中无对象");
         }
     }
 
-
+    /**
+     * 扫描包下的注解
+     *
+     * @param configClass 配置类
+     */
     private void scan(Class configClass) {
         // 判断类上是否有 @ComponentScan 注解
         if (configClass.isAnnotationPresent(ComponentScan.class)) {
@@ -111,8 +125,7 @@ public class AnnotationConfigApplicationContext {
                                     String scope = scopeAnnotation.value();
                                     // 把这个作用域赋值给 beanDefinition 对象
                                     beanDefinition.setScope(scope);
-                                }
-                                else {
+                                } else {
                                     // 没有配置 @Scope 注解的默认是单例模式
                                     beanDefinition.setScope("singleton");
                                 }
@@ -128,7 +141,6 @@ public class AnnotationConfigApplicationContext {
         }
     }
 
-
     /**
      * 根据 Bean 的定义创建 Bean 对象
      *
@@ -138,10 +150,27 @@ public class AnnotationConfigApplicationContext {
     private Object createBean(BeanDefinition beanDefinition) {
         // 获取要创建的 Bean 对象的 Class 对象
         Class clazz = beanDefinition.getClazz();
-        Object bean = null;
-        // 通过反射创建对象
         try {
-            bean = clazz.getDeclaredConstructor().newInstance();
+            // 通过反射创建对象
+            Object bean = clazz.getDeclaredConstructor().newInstance();
+            // 遍历该类的全部属性
+            for (Field declaredField : clazz.getDeclaredFields()) {
+                // 判断属性上是否存在 @Autowired 注解
+                if (declaredField.isAnnotationPresent(Autowired.class)) {
+                    // 把属性名作为参数传递到 getBean() 方法中来获取对象
+                    Object fieldBean = getBean(declaredField.getName());
+                    if (fieldBean == null) {
+                        Autowired autowiredAnnotation = declaredField.getDeclaredAnnotation(Autowired.class);
+                        if (autowiredAnnotation.required()) {
+                            throw new NullPointerException("参数注入错误");
+                        }
+                    }
+                    // 破坏属性的私有
+                    declaredField.setAccessible(true);
+                    // 将 fieldBean 注入 bean 的属性值
+                    declaredField.set(bean, fieldBean);
+                }
+            }
             return bean;
         } catch (InstantiationException e) {
             e.printStackTrace();
