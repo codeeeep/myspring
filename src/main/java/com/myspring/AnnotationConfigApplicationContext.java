@@ -3,8 +3,10 @@ package com.myspring;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -42,6 +44,18 @@ public class AnnotationConfigApplicationContext {
     private List<BeanPostProcessor> beanPostProcessorList = new ArrayList<>();
 
     /**
+     * 用于存储通过 @Before 注解解析出的切入点及通知
+     * key: execute 表达式
+     * value: 同一个 execute 表达式的所有增强方法
+     */
+    private ConcurrentHashMap<String, List<MethodWithClass>> beforeMethodMap = new ConcurrentHashMap<>();
+
+    /**
+     * 用于存储通过 @After 注解解析出的切入点及通知
+     */
+    private ConcurrentHashMap<String, List<MethodWithClass>> afterMethodMap = new ConcurrentHashMap<>();
+
+    /**
      * 初始化 IoC 容器
      *
      * @param configClass 配置类
@@ -51,8 +65,38 @@ public class AnnotationConfigApplicationContext {
         this.configClass = configClass;
         // 扫描配置类中指定的路径
         scan(configClass);
+        // 判断配置类是否开启 AOP
+        checkAop();
         // 在扫描完成后创建所有的单例 Bean 并放入单例池中
         createAllSingletons();
+    }
+
+    /**
+     * 判断配置类是否开启了 AOP，如果开启就向 Bean 容器中添加一个 AnnotationAwareAspectJAutoProxyCreator
+     */
+    private void checkAop() {
+        // 判断类上是否有 @EnableAspectJAutoProxy 注解
+        if (configClass.isAnnotationPresent(EnableAspectAutoProxy.class)) {
+            // 如果存在此注解，便先获取 AnnotationAwareAspectJAutoProxyCreator 的 Class 对象
+            Class clazz = AnnotationAwareAspectJAutoProxyCreator.class;
+            try {
+                // 将 AnnotationAwareAspectJAutoProxyCreator 实例化
+                AnnotationAwareAspectJAutoProxyCreator instance = (AnnotationAwareAspectJAutoProxyCreator) clazz.getDeclaredConstructor().newInstance();
+                // 填充这个实例的两个属性
+                instance.setAfterMethodMap(afterMethodMap);
+                instance.setBeforeMethodMap(beforeMethodMap);
+                // 把实例存入 beanPostProcessor 池子中
+                beanPostProcessorList.add(instance);
+            } catch (InstantiationException e) {
+                e.printStackTrace();
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            } catch (InvocationTargetException e) {
+                e.printStackTrace();
+            } catch (NoSuchMethodException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     /**
@@ -144,28 +188,10 @@ public class AnnotationConfigApplicationContext {
                             if (clazz.isAnnotationPresent(Component.class)) {
                                 // 把实现了 BeanPostProcessor 接口的类实例添加到 list 中
                                 addToBeanPostProcessorList(clazz);
-                                // 获取类的 @Component 注解
-                                Component componentAnnotation = clazz.getDeclaredAnnotation(Component.class);
-                                // 获取注解的参数
-                                String beanName = componentAnnotation.value();
-                                // 创建 BeanDefinition 对象
-                                BeanDefinition beanDefinition = new BeanDefinition();
-                                // 为 BeanDefinition 注入 clazz 属性
-                                beanDefinition.setClazz(clazz);
-                                // 判断类上是否添加了 @Scope 注解
-                                if (clazz.isAnnotationPresent(Scope.class)) {
-                                    // 获取类上的 @Scope 注解
-                                    Scope scopeAnnotation = clazz.getDeclaredAnnotation(Scope.class);
-                                    // 获取此注解的参数，即 Bean 的作用域
-                                    String scope = scopeAnnotation.value();
-                                    // 把这个作用域赋值给 beanDefinition 对象
-                                    beanDefinition.setScope(scope);
-                                } else {
-                                    // 没有配置 @Scope 注解的默认是单例模式
-                                    beanDefinition.setScope("singleton");
-                                }
-                                // 把 BeanDefinition 对象放入 Map
-                                beanDefinitionMap.put(beanName, beanDefinition);
+                                // 对添加了 @Aspect 注解的类执行额外操作
+                                getPointcutFromAspect(clazz);
+                                // 创建当前类的 BeanDefinition 对象并添加到 map 中
+                                putInBeanDefinitionMap(clazz);
                             }
                         } catch (ClassNotFoundException e) {
                             e.printStackTrace();
@@ -185,6 +211,55 @@ public class AnnotationConfigApplicationContext {
     }
 
     /**
+     * 判断传入的类是否是切面类，如果是切面类就进行解析
+     * @param clazz
+     */
+    private void getPointcutFromAspect(Class<?> clazz) {
+        // 判断是否添加了 @Aspect 注解
+        if (clazz.isAnnotationPresent(Aspect.class)) {
+            // 遍历这个类的全部方法
+            for (Method declaredMethod : clazz.getDeclaredMethods()) {
+                // 判断是否添加了 @Before 注解
+                if (declaredMethod.isAnnotationPresent(Before.class)) {
+                    // 获取 @Before 注解
+                    Before beforeAnnotation = declaredMethod.getDeclaredAnnotation(Before.class);
+                    // 获取注解中的参数
+                    String pointcut = beforeAnnotation.value();
+                    // 将解析出的参数和方法本身填入 map
+                    List<MethodWithClass> methodWithClassList = null;
+                    if (beforeMethodMap.get(pointcut) == null) {
+                        methodWithClassList = new LinkedList<>();
+                    }
+                    else {
+                        methodWithClassList = beforeMethodMap.get(pointcut);
+                    }
+                    MethodWithClass methodWithClass = new MethodWithClass(clazz, declaredMethod);
+                    methodWithClassList.add(methodWithClass);
+                    beforeMethodMap.put(pointcut, methodWithClassList);
+                }
+                // 判断是否添加了 @After 注解
+                if (declaredMethod.isAnnotationPresent(After.class)) {
+                    // 获取 @After 注解
+                    After afterAnnotation = declaredMethod.getDeclaredAnnotation(After.class);
+                    // 获取注解中的参数
+                    String pointcut = afterAnnotation.value();
+                    // 将解析出的参数和方法本身填入 map
+                    List<MethodWithClass> methodWithClassList = null;
+                    if (afterMethodMap.get(pointcut) == null) {
+                        methodWithClassList = new LinkedList<>();
+                    }
+                    else {
+                        methodWithClassList = afterMethodMap.get(pointcut);
+                    }
+                    MethodWithClass methodWithClass = new MethodWithClass(clazz, declaredMethod);
+                    methodWithClassList.add(methodWithClass);
+                    afterMethodMap.put(pointcut, methodWithClassList);
+                }
+            }
+        }
+    }
+
+    /**
      * 把实现了 BeanPostProcessor 接口的对象实例放进池子中
      * @param clazz 实现了 BeanPostProcessor 接口的类对象
      *
@@ -197,6 +272,35 @@ public class AnnotationConfigApplicationContext {
             // 把实例存入池子中
             beanPostProcessorList.add(instance);
         }
+    }
+
+    /**
+     * 根据传入的 CLass 对象创建 BeanDefinition 对象并存入 Map 中
+     * @param clazz 需要创建实例的类对象
+     */
+    private void putInBeanDefinitionMap(Class<?> clazz) {
+        // 获取类的 @Component 注解
+        Component componentAnnotation = clazz.getDeclaredAnnotation(Component.class);
+        // 获取注解的参数
+        String beanName = componentAnnotation.value();
+        // 创建 BeanDefinition 对象
+        BeanDefinition beanDefinition = new BeanDefinition();
+        // 为 BeanDefinition 注入 clazz 属性
+        beanDefinition.setClazz(clazz);
+        // 判断类上是否添加了 @Scope 注解
+        if (clazz.isAnnotationPresent(Scope.class)) {
+            // 获取类上的 @Scope 注解
+            Scope scopeAnnotation = clazz.getDeclaredAnnotation(Scope.class);
+            // 获取此注解的参数，即 Bean 的作用域
+            String scope = scopeAnnotation.value();
+            // 把这个作用域赋值给 beanDefinition 对象
+            beanDefinition.setScope(scope);
+        } else {
+            // 没有配置 @Scope 注解的默认是单例模式
+            beanDefinition.setScope("singleton");
+        }
+        // 把 BeanDefinition 对象放入 Map
+        beanDefinitionMap.put(beanName, beanDefinition);
     }
 
     /**
