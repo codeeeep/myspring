@@ -34,9 +34,13 @@ public class Test {
         // System.out.println(userService1);
         // orderService1.methodWithUsers();
         // 7. 测试 AOP 功能是否成功
+        // OrderService orderService1 = (OrderService) applicationContext.getBean("orderService");
+        // userService1.methodWithOrders();
+        // orderService1.methodWithUsers();
+        // 8. 测试 AOP 对循环依赖的影响
         OrderService orderService1 = (OrderService) applicationContext.getBean("orderService");
-        userService1.methodWithOrders();
-        orderService1.methodWithUsers();
+        userService1.methodWithOrders().methodWithUsers();
+        orderService1.methodWithUsers().methodWithOrders();
     }
 
 }

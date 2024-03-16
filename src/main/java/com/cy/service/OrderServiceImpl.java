@@ -15,7 +15,8 @@ public class OrderServiceImpl implements OrderService{
     private UserService userService;
 
     @Override
-    public void methodWithUsers() {
-        System.out.println(userService);
+    public UserService methodWithUsers() {
+        // System.out.println(userService);
+        return userService;
     }
 }

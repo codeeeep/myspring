@@ -27,8 +27,9 @@ public class UserServiceImpl implements UserService, BeanNameAware, InitializeBe
     }
 
     @Override
-    public void methodWithOrders() {
-        System.out.println(orderService);
+    public OrderService methodWithOrders() {
+        // System.out.println(orderService);
+        return orderService;
     }
 
     @Override

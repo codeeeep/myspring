@@ -15,7 +15,7 @@ public interface UserService {
     /**
      * 打印注入的 orderService
      */
-    void methodWithOrders();
+    OrderService methodWithOrders();
 
     /**
      * 打印 Aware 回调获取的 beanName

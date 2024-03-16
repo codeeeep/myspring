@@ -7,6 +7,6 @@ package com.cy.service;
  */
 public interface OrderService {
 
-    void methodWithUsers();
+    UserService methodWithUsers();
 
 }
