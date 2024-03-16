@@ -34,6 +34,11 @@ public class AnnotationConfigApplicationContext {
     private ConcurrentHashMap<String, Object> earlySingletonObjects = new ConcurrentHashMap();
 
     /**
+     * 三级缓存
+     */
+    private ConcurrentHashMap<String, ObjectFactory> singletonFactories = new ConcurrentHashMap<>();
+
+    /**
      * BeanDefinition 对象存储空间
      */
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
@@ -56,6 +61,11 @@ public class AnnotationConfigApplicationContext {
     private ConcurrentHashMap<String, List<MethodWithClass>> afterMethodMap = new ConcurrentHashMap<>();
 
     /**
+     * 正在创建中的 Bean 的名称
+     */
+    private LinkedList<String> creatingBeanNameList = new LinkedList<>();
+
+    /**
      * 初始化 IoC 容器
      *
      * @param configClass 配置类
@@ -69,6 +79,26 @@ public class AnnotationConfigApplicationContext {
         checkAop();
         // 在扫描完成后创建所有的单例 Bean 并放入单例池中
         createAllSingletons();
+    }
+
+    /**
+     * 判断传入的参数 bean 是否需要 AOP，如果需要就返回代理对象，否则返回原始对象
+     * @param beanName  传入 bean 的 BeanName
+     * @param bean  传入待判断的 bean 对象
+     * @return  根据传入参数 bean 对象来返回原始对象或代理对象
+     */
+    private Object getEarlyBeanReference(String beanName, Object bean) {
+        // 创建一个额外的引用用于最终的返回
+        Object exposedObject = bean;
+        // 遍历 beanPostProcessorList
+        for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
+            // 判断其是否为 AnnotationAwareAspectJAutoProxyCreator 的实例
+            if (beanPostProcessor instanceof AnnotationAwareAspectJAutoProxyCreator) {
+                // 如果是，就调用后置处理方法，对 bean 进行加工
+                exposedObject = beanPostProcessor.postProcessAfterInitialization(bean, beanName);
+            }
+        }
+        return exposedObject;
     }
 
     /**
@@ -132,11 +162,20 @@ public class AnnotationConfigApplicationContext {
             if ("singleton".equals(beanDefinition.getScope())) {
                 // 单例模式直接取出即可
                 Object bean = singletonObjects.get(beanName);
-                // 如果取不到，就尝试从二级缓存中取出
-                if (bean == null) {
+                // 如果取不到，且这个 Bean 正在创建，就尝试从二级缓存中取出
+                if (bean == null && creatingBeanNameList.contains(beanName)) {
                     bean = earlySingletonObjects.get(beanName);
                 }
-                // 如果二级缓存取不到，就调用 createBean() 方法创建对象
+                // 如果仍然取不到，且这个 Bean 正在创建，就从三级缓存中去取，并放入二级缓存
+                if (bean == null && creatingBeanNameList.contains(beanName)) {
+                    // 从三级缓存中取出，调用 getObject() 方法来执行 getEarlyBeanReference() 方法
+                    bean = singletonFactories.get(beanName).getObject();
+                    // 放入二级缓存
+                    earlySingletonObjects.put(beanName, bean);
+                    // 从三级缓存中删除
+                    singletonFactories.remove(beanName);
+                }
+                // 否则直接调用 createBean() 方法创建对象
                 if (bean == null) {
                     bean = createBean(beanName, beanDefinition);
                 }
@@ -316,12 +355,15 @@ public class AnnotationConfigApplicationContext {
         try {
             // 通过反射创建对象
             Object bean = clazz.getDeclaredConstructor().newInstance();
-            // 把 Bean 对象放到二级缓存中
-            earlySingletonObjects.put(beanName, bean);
+            // 把 Bean 对象的名称放入 creatingBeanNameList 中
+            creatingBeanNameList.add(beanName);
+            // 把 Bean 对象及其名称放入三级缓存
+            Object finalBean = bean;
+            singletonFactories.put(beanName, () -> getEarlyBeanReference(beanName, finalBean));
             // 填充 Bean 对象的属性
             populateBean(clazz, bean);
-            // 把 Bean 从二级缓存中移除
-            earlySingletonObjects.remove(beanName);
+            // 把 Bean 对象从三级缓存中删除
+            singletonFactories.remove(beanName);
             // 判断当前 Bean 是否实现了 BeanNameAware 接口
             if (bean instanceof BeanNameAware) {
                 // 如果实现了 BeanNameAware 接口，就可以直接强转，然后调用 setBeanName() 方法
@@ -339,10 +381,17 @@ public class AnnotationConfigApplicationContext {
             for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
                 bean = beanPostProcessor.postProcessAfterInitialization(bean, beanName);
             }
+            // 判断二级缓存中是否存在 Bean 对象
+            if (earlySingletonObjects.containsKey(beanName)) {
+                // 如果存在意味着它提前 AOP 了，需要取出
+                bean = earlySingletonObjects.get(beanName);
+            }
             // 把单例的 Bean 对象放入单例池
             if ("singleton".equals(beanDefinition.getScope())) {
                 singletonObjects.put(beanName, bean);
             }
+            // 从 creatingBeanNameList 中删除 BeanName
+            creatingBeanNameList.remove(beanName);
             return bean;
         } catch (InstantiationException e) {
             e.printStackTrace();
