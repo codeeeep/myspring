@@ -28,12 +28,15 @@ public class Test {
         // 5. 测试后置处理器是否成功
         // userService1.printBeanName();
         // 6.1 测试循环依赖
+        // OrderService orderService1 = (OrderService) applicationContext.getBean("orderService");
+        // System.out.println(orderService1);
+        // userService1.methodWithOrders();
+        // System.out.println(userService1);
+        // orderService1.methodWithUsers();
+        // 7. 测试 AOP 功能是否成功
         OrderService orderService1 = (OrderService) applicationContext.getBean("orderService");
-        System.out.println(orderService1);
         userService1.methodWithOrders();
-        System.out.println(userService1);
         orderService1.methodWithUsers();
-
     }
 
 }

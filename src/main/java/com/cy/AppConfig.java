@@ -1,6 +1,7 @@
 package com.cy;
 
 import com.myspring.ComponentScan;
+import com.myspring.EnableAspectAutoProxy;
 
 /**
  * @author codeep
@@ -9,6 +10,7 @@ import com.myspring.ComponentScan;
  */
 
 @ComponentScan("com.cy.service")
+@EnableAspectAutoProxy
 public class AppConfig {
 
 }
