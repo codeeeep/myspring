@@ -27,6 +27,11 @@ public class AnnotationConfigApplicationContext {
     private ConcurrentHashMap<String, Object> singletonObjects = new ConcurrentHashMap();
 
     /**
+     * 二级缓存单例池，存放还没进行属性赋值的半成品单例 Bean
+     */
+    private ConcurrentHashMap<String, Object> earlySingletonObjects = new ConcurrentHashMap();
+
+    /**
      * BeanDefinition 对象存储空间
      */
     private ConcurrentHashMap<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>();
@@ -46,12 +51,24 @@ public class AnnotationConfigApplicationContext {
         this.configClass = configClass;
         // 扫描配置类中指定的路径
         scan(configClass);
+        // 在扫描完成后创建所有的单例 Bean 并放入单例池中
+        createAllSingletons();
+    }
+
+    /**
+     * 在扫描完成后创建所有的单例 Bean 并放入单例池中
+     */
+    private void createAllSingletons() {
+        // 获取 beanDefinitionMap 中的所有键值对
         for (Map.Entry<String, BeanDefinition> entry : beanDefinitionMap.entrySet()) {
+            // 拿到 beanName
             String beanName = entry.getKey();
+            // 拿到 BeanDefinition 对象
             BeanDefinition beanDefinition = entry.getValue();
+            // 判断是否为单例模式
             if ("singleton".equals(beanDefinition.getScope())) {
-                Object bean = createBean(beanName, beanDefinition);
-                singletonObjects.put(beanName, bean);
+                // 是单例模式，就立即创建对象
+                Object bean = getBean(beanName);
             }
         }
     }
@@ -65,14 +82,23 @@ public class AnnotationConfigApplicationContext {
     public Object getBean(String beanName) {
         // 判断传入的参数是否在 beanDefinitionMap 中定义过
         if (beanDefinitionMap.containsKey(beanName)) {
+            // 获取 BeanDefinition 对象
+            BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
             // 存在意味着之前定义过，那么就需要判断它的作用域
-            if (singletonObjects.containsKey(beanName)) {
-                // 在单例池中存在，意味着是单例模式，直接取出即可
+            if ("singleton".equals(beanDefinition.getScope())) {
+                // 单例模式直接取出即可
                 Object bean = singletonObjects.get(beanName);
+                // 如果取不到，就尝试从二级缓存中取出
+                if (bean == null) {
+                    bean = earlySingletonObjects.get(beanName);
+                }
+                // 如果二级缓存取不到，就调用 createBean() 方法创建对象
+                if (bean == null) {
+                    bean = createBean(beanName, beanDefinition);
+                }
                 return bean;
             } else {
                 // 不在单例池中存在，意味着是原型模式，需要创建对象
-                BeanDefinition beanDefinition = beanDefinitionMap.get(beanName);
                 Object bean = createBean(beanName, beanDefinition);
                 return bean;
             }
@@ -158,6 +184,11 @@ public class AnnotationConfigApplicationContext {
         }
     }
 
+    /**
+     * 把实现了 BeanPostProcessor 接口的对象实例放进池子中
+     * @param clazz 实现了 BeanPostProcessor 接口的类对象
+     *
+     */
     private void addToBeanPostProcessorList(Class<?> clazz) throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException {
         // 判断这个类是否实现了 BeanPostProcessor 接口
         if (BeanPostProcessor.class.isAssignableFrom(clazz)) {
@@ -181,24 +212,12 @@ public class AnnotationConfigApplicationContext {
         try {
             // 通过反射创建对象
             Object bean = clazz.getDeclaredConstructor().newInstance();
-            // 遍历该类的全部属性
-            for (Field declaredField : clazz.getDeclaredFields()) {
-                // 判断属性上是否存在 @Autowired 注解
-                if (declaredField.isAnnotationPresent(Autowired.class)) {
-                    // 把属性名作为参数传递到 getBean() 方法中来获取对象
-                    Object fieldBean = getBean(declaredField.getName());
-                    if (fieldBean == null) {
-                        Autowired autowiredAnnotation = declaredField.getDeclaredAnnotation(Autowired.class);
-                        if (autowiredAnnotation.required()) {
-                            throw new NullPointerException("参数注入错误");
-                        }
-                    }
-                    // 破坏属性的私有
-                    declaredField.setAccessible(true);
-                    // 将 fieldBean 注入 bean 的属性值
-                    declaredField.set(bean, fieldBean);
-                }
-            }
+            // 把 Bean 对象放到二级缓存中
+            earlySingletonObjects.put(beanName, bean);
+            // 填充 Bean 对象的属性
+            populateBean(clazz, bean);
+            // 把 Bean 从二级缓存中移除
+            earlySingletonObjects.remove(beanName);
             // 判断当前 Bean 是否实现了 BeanNameAware 接口
             if (bean instanceof BeanNameAware) {
                 // 如果实现了 BeanNameAware 接口，就可以直接强转，然后调用 setBeanName() 方法
@@ -216,6 +235,10 @@ public class AnnotationConfigApplicationContext {
             for (BeanPostProcessor beanPostProcessor : beanPostProcessorList) {
                 bean = beanPostProcessor.postProcessAfterInitialization(bean, beanName);
             }
+            // 把单例的 Bean 对象放入单例池
+            if ("singleton".equals(beanDefinition.getScope())) {
+                singletonObjects.put(beanName, bean);
+            }
             return bean;
         } catch (InstantiationException e) {
             e.printStackTrace();
@@ -229,6 +252,33 @@ public class AnnotationConfigApplicationContext {
             e.printStackTrace();
         }
         return null;
+    }
+
+    /**
+     * 填充 Bean 对象的属性
+     * @param clazz Bean 对象的 Class 对象
+     * @param bean  待填充的 bean 对象
+     * @throws IllegalAccessException
+     */
+    private void populateBean(Class clazz, Object bean) throws IllegalAccessException {
+        // 遍历该类的全部属性准备进行属性填充
+        for (Field declaredField : clazz.getDeclaredFields()) {
+            // 判断属性上是否存在 @Autowired 注解
+            if (declaredField.isAnnotationPresent(Autowired.class)) {
+                // 把属性名作为参数传递到 getBean() 方法中来获取对象
+                Object fieldBean = getBean(declaredField.getName());
+                if (fieldBean == null) {
+                    Autowired autowiredAnnotation = declaredField.getDeclaredAnnotation(Autowired.class);
+                    if (autowiredAnnotation.required()) {
+                        throw new NullPointerException("参数注入错误");
+                    }
+                }
+                // 破坏属性的私有
+                declaredField.setAccessible(true);
+                // 将 fieldBean 注入 bean 的属性值
+                declaredField.set(bean, fieldBean);
+            }
+        }
     }
 
 }
