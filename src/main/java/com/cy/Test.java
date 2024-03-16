@@ -1,5 +1,6 @@
 package com.cy;
 
+import com.cy.service.OrderService;
 import com.cy.service.UserService;
 import com.myspring.AnnotationConfigApplicationContext;
 
@@ -25,7 +26,14 @@ public class Test {
         // userService1.printBeanName();
         // 4. 测试 Bean 的初始化接口是否成功
         // 5. 测试后置处理器是否成功
-        userService1.printBeanName();
+        // userService1.printBeanName();
+        // 6.1 测试循环依赖
+        OrderService orderService1 = (OrderService) applicationContext.getBean("orderService");
+        System.out.println(orderService1);
+        userService1.methodWithOrders();
+        System.out.println(userService1);
+        orderService1.methodWithUsers();
+
     }
 
 }

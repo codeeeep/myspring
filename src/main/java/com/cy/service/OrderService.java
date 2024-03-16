@@ -6,4 +6,7 @@ package com.cy.service;
  * @description:
  */
 public interface OrderService {
+
+    void methodWithUsers();
+
 }

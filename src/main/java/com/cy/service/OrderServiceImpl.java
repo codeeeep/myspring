@@ -1,5 +1,6 @@
 package com.cy.service;
 
+import com.myspring.Autowired;
 import com.myspring.Component;
 
 /**
@@ -9,4 +10,12 @@ import com.myspring.Component;
  */
 @Component("orderService")
 public class OrderServiceImpl implements OrderService{
+
+    @Autowired
+    private UserService userService;
+
+    @Override
+    public void methodWithUsers() {
+        System.out.println(userService);
+    }
 }
